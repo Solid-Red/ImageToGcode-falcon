@@ -1,0 +1,14 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Falcon G-Code Studio v3
+GenericName=Laser CNC G-Code Studio
+GenericName[es]=Generador de G-Code para CNC Láser
+Comment=G-Code generator and bed composer for Creality Falcon (400x400 mm)
+Comment[es]=Herramienta de composición y generación de G-Code para Creality Falcon (400x400 mm)
+Exec=/home/redkatt/Downloads/LaserGRBL-7.14.1/falcon_laser_v3/falcon_studio
+Icon=/home/redkatt/Downloads/LaserGRBL-7.14.1/falcon_laser_v3/icon.png
+Terminal=false
+Categories=Graphics;Development;Engineering;Utility;
+Keywords=laser;creality;falcon;cnc;gcode;engrave;cut;
+StartupNotify=true

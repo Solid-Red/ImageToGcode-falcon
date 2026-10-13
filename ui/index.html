@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Falcon G-Code Studio v3 - Creality Falcon 5W (Linux Desktop)</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- HEADER PRINCIPAL NATIVO -->
+  <header class="app-header">
+    <div class="brand-section">
+      <div class="brand-logo">⚡</div>
+      <div class="brand-info">
+        <h1>FALCON G-CODE STUDIO v3</h1>
+        <span class="brand-subtitle" data-i18n="brandSubtitle">Linux Native Desktop App • Creality Falcon (400 × 400 mm)</span>
+      </div>
+    </div>
+
+    <!-- ACCIONES RÁPIDAS EN CABECERA & SELECTOR DE IDIOMA -->
+    <div class="header-tools-section">
+      <!-- Selector de Idioma (Inglés por defecto con opción a Español) -->
+      <div class="lang-switch-group" title="Language / Idioma">
+        <span class="lang-icon">🌐</span>
+        <button id="btnLangEn" class="lang-btn active" type="button" title="Switch language to English">EN</button>
+        <button id="btnLangEs" class="lang-btn" type="button" title="Cambiar idioma a Español">ES</button>
+      </div>
+
+      <input type="file" id="gcodeFileInput" accept=".gcode,.nc,.gc,.txt,.tap" style="display:none">
+      <button id="btnImportGcodeTop" class="btn-accent btn-sm" data-i18n="btnImportGcodeTop" data-i18n-title="btnImportGcodeTopTitle" title="Import .gcode or .nc file to bed">📂 Import G-Code</button>
+      <button id="btnGenerateGcodeTop" class="btn-primary btn-sm" data-i18n="btnGenerateGcodeTop" data-i18n-title="btnGenerateGcodeTopTitle" title="Generate G-Code with active images on bed">⚡ Generate G-Code</button>
+      <button id="btnExportGcodeTop" class="btn-secondary btn-sm" data-i18n="btnExportGcodeTop" data-i18n-title="btnExportGcodeTopTitle" title="Save with native Linux dialog">💾 Export .gcode</button>
+      <button id="btnExportNcTop" class="btn-secondary btn-sm btn-nc" data-i18n-title="btnExportNcTopTitle" title="Export with .nc extension">.NC</button>
+    </div>
+  </header>
+
+  <!-- BARRA DE INFORMACIÓN TÉCNICA DEL TRABAJO -->
+  <section class="telemetry-bar studio-summary-bar">
+    <div class="coord-box">
+      <span class="coord-label" data-i18n="statPosWorkLabel">Active Position</span>
+      <span id="statPosWork" class="coord-val">X: 20.0 | Y: 20.0 mm</span>
+      <span class="coord-sub" data-i18n="statPosWorkSub">Falcon Area: 400 × 400 mm</span>
+    </div>
+    <div class="coord-box">
+      <span class="coord-label" data-i18n="statDimensionsLabel">Selected Design</span>
+      <span id="statDimensions" class="coord-val">0.0 × 0.0 mm</span>
+      <span class="coord-sub" id="statResolution">Resolution: 6 l/mm</span>
+    </div>
+    <div class="coord-box">
+      <span class="coord-label" data-i18n="statLaserPowerLabel">Laser Power</span>
+      <span id="statLaserPower" class="coord-val power-val">S0 - S850 (M4)</span>
+      <span class="coord-sub" id="statMachineWatt">Creality Falcon 5W</span>
+    </div>
+    <div class="coord-box">
+      <span class="coord-label" data-i18n="statFeedRateLabel">Feed &amp; Passes</span>
+      <span id="statFeedRate" class="coord-val">3500 mm/min</span>
+      <span class="coord-sub" id="statPasses">1 Pass</span>
+    </div>
+    <div class="coord-box">
+      <span class="coord-label" data-i18n="statGcodeLinesLabel">G-Code Status</span>
+      <span id="statGcodeLines" class="coord-val">0 lines</span>
+      <span class="coord-sub" id="statEstTime">Est. time: --</span>
+    </div>
+  </section>
+
+  <!-- ESTUDIO PRINCIPAL: MESA DE TRABAJO 400x400 mm + PANEL DE AJUSTES -->
+  <main class="studio-layout">
+
+    <!-- COLUMNA IZQUIERDA: MESA DE TRABAJO Y SIMULADOR VISUAL -->
+    <section class="studio-bed-section">
+      <div class="card bed-card">
+        <div class="card-header bed-header">
+          <div class="bed-title-group">
+            <h2 data-i18n="bedTitle">📐 Creality Falcon Work Bed (400 × 400 mm)</h2>
+            <span class="bed-hint" data-i18n="bedHint">Drag to move • Pull corners to resize • Supports multiple images</span>
+          </div>
+          <div class="canvas-tools">
+            <button id="btnZoomIn" class="btn-icon" data-i18n-title="zoomInTitle" title="Zoom in">➕</button>
+            <button id="btnZoomOut" class="btn-icon" data-i18n-title="zoomOutTitle" title="Zoom out">➖</button>
+            <button id="btnResetView" class="btn-secondary btn-sm" data-i18n="btnResetView" data-i18n-title="btnResetViewTitle" title="Reset bed view">Center Bed</button>
+          </div>
+        </div>
+
+        <!-- CANVAS DE LA MESA DE TRABAJO -->
+        <div class="canvas-container" id="canvasContainer">
+          <canvas id="bedCanvas"></canvas>
+
+          <!-- Indicador flotante de imágenes en la mesa -->
+          <div class="bed-floating-badge" id="bedFloatingBadge">
+            <span>🖼️</span> <strong id="bedBadgeActiveCount">0</strong> / <span id="bedBadgeTotalCount">0</span> <span data-i18n="bedBadgeText">images to engrave</span>
+          </div>
+
+          <!-- Aviso flotante si alguna imagen o G-Code se sale de la mesa -->
+          <div id="outOfBoundsWarning" class="out-of-bounds-alert" style="display: none;" data-i18n="outOfBoundsWarningDefault">
+            ⚠️ Warning! The design exceeds the bed limits (400 × 400 mm)
+          </div>
+
+          <!-- Leyenda de colores -->
+          <div class="canvas-legend">
+            <span><span class="dot origin-dot"></span> <span data-i18n="legendOrigin">Origin (0,0)</span></span>
+            <span><span class="dot img-dot"></span> <span data-i18n="legendActiveImg">Active Image</span></span>
+            <span><span class="dot gcode-dot"></span> <span data-i18n="legendGcode">Generated/Loaded G-Code</span></span>
+            <span><span class="dot pen-dot"></span> <span data-i18n="legendPen">Virtual Pen</span></span>
+            <span class="legend-coords" id="legendCursorCoords">X: 0.0 mm | Y: 0.0 mm</span>
+          </div>
+        </div>
+
+        <!-- BARRA INFERIOR DE COLOCACIÓN RÁPIDA DE LA MESA -->
+        <div class="bed-quick-toolbar">
+          <div class="toolbar-align-group">
+            <span class="toolbar-label" data-i18n="toolbarAlignLabel">Quick Alignment:</span>
+            <button id="btnAlignBottomLeft" class="btn-secondary btn-sm" data-i18n="btnAlignBottomLeft" data-i18n-title="btnAlignBottomLeftTitle" title="Place active image at origin (0,0)">↙ Origin (0,0)</button>
+            <button id="btnAlignCenter" class="btn-secondary btn-sm" data-i18n="btnAlignCenter" data-i18n-title="btnAlignCenterTitle" title="Center active image on bed (400x400 mm)">⌖ Center</button>
+            <button id="btnAlignTopLeft" class="btn-secondary btn-sm" data-i18n="btnAlignTopLeft" data-i18n-title="btnAlignTopLeftTitle" title="Place at top-left">↖ Top-Left</button>
+            <button id="btnAlignBottomRight" class="btn-secondary btn-sm" data-i18n="btnAlignBottomRight" data-i18n-title="btnAlignBottomRightTitle" title="Place at bottom-right">↘ Bottom-Right</button>
+          </div>
+        </div>
+
+        <!-- BARRA PRINCIPAL DE GENERACIÓN, SIMULACIÓN Y EXPORTACIÓN -->
+        <div class="gcode-toolbar-main">
+          <div class="job-status-summary">
+            <span id="jobStatusBadge" class="job-badge idle" data-i18n="jobStatusWaiting">Waiting for generation</span>
+            <span id="jobInfoLines" class="job-sub-info" data-i18n="jobInfoLinesDefault">0 lines of code</span>
+            <span id="jobInfoTime" class="job-sub-info" data-i18n="jobInfoTimeDefault">Est. time: 0m 0s</span>
+          </div>
+
+          <div class="gcode-main-buttons">
+            <button id="btnMainGenerate" class="btn-generate-hero" data-i18n="btnMainGenerate" data-i18n-title="btnMainGenerateTitle" title="Generate G-Code for all images marked with 🖨️">
+              ⚡ GENERATE G-CODE
+            </button>
+            <button id="btnSimulateTrace" class="btn-accent" data-i18n="btnSimulateTrace" data-i18n-title="btnSimulateTraceTitle" title="Virtually simulate laser trace over the bed">
+              ▶ Simulate Trace
+            </button>
+            <button id="btnExportGcodeMain" class="btn-secondary" data-i18n="btnExportGcodeMain" data-i18n-title="btnExportGcodeMainTitle" title="Export and save with native dialog">
+              💾 Save .GCode
+            </button>
+            <button id="btnExportNcMain" class="btn-secondary btn-nc" data-i18n-title="btnExportNcMainTitle" title="Export .NC file for CNC">
+              .NC
+            </button>
+            <button id="btnViewGcodeMain" class="btn-secondary" data-i18n="btnViewGcodeMain" data-i18n-title="btnViewGcodeMainTitle" title="Inspect G-Code">
+              👁️ View Code
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- COLUMNA DERECHA: AJUSTES DE IMÁGENES, MENÚ DE CAPAS Y POTENCIA -->
+    <aside class="studio-sidebar">
+      <div class="sidebar-tabs">
+        <button class="side-tab-btn active" data-tab="tabImageSettings" data-i18n="tabImageSettingsBtn">🖼️ Images &amp; Bed</button>
+        <button class="side-tab-btn" data-tab="tabLaserSettings" data-i18n="tabLaserSettingsBtn">⚡ Power &amp; Materials</button>
+      </div>
+
+      <div class="sidebar-content">
+
+        <!-- PESTAÑA 1: IMÁGENES, MENÚ DE CAPAS Y COLOCACIÓN -->
+        <div id="tabImageSettings" class="side-pane active">
+          <!-- Conmutador Imagen vs G-Code -->
+          <div class="source-mode-switcher">
+            <button id="btnModeImage" class="mode-tab-btn active" type="button" data-i18n="btnModeImage">🖼️ Images to G-Code</button>
+            <button id="btnModeGcode" class="mode-tab-btn" type="button" data-i18n="btnModeGcode">📂 Imported G-Code</button>
+          </div>
+
+          <!-- PANE G-CODE IMPORTADO -->
+          <div id="gcodeWorkflowPane" style="display: none;">
+            <div class="upload-compact gcode-drop-compact" id="gcodeDropArea">
+              <div class="upload-text">
+                <span data-i18n="gcodeDropPrompt">📂 <strong>Load G-Code File</strong> or drag here</span>
+                <span class="upload-sub" data-i18n="gcodeDropSub">.GCODE, .NC, .GC, .TAP, .TXT</span>
+              </div>
+            </div>
+
+            <div id="importedGcodeCard" class="imported-gcode-card" style="display: none;">
+              <div class="gcode-card-header">
+                <div class="gcode-card-title">
+                  <span class="gcode-icon">📄</span>
+                  <div class="gcode-title-text">
+                    <strong id="gcodeFileName">file.gcode</strong>
+                    <span id="gcodeFileSize" class="gcode-size">0 KB</span>
+                  </div>
+                </div>
+                <button id="btnUnloadGcode" class="btn-icon btn-sm" data-i18n-title="btnUnloadGcodeTitle" title="Remove G-Code from bed">✕</button>
+              </div>
+
+              <div class="gcode-stats-grid">
+                <div class="gcode-stat-item">
+                  <span class="stat-lbl" data-i18n="lblGcodeDimensions">📐 Dimensions:</span>
+                  <span id="gcodeDimensions" class="stat-val">0 × 0 mm</span>
+                </div>
+                <div class="gcode-stat-item">
+                  <span class="stat-lbl" data-i18n="lblGcodeLines">📊 Lines:</span>
+                  <span id="gcodeLineCount" class="stat-val">0</span>
+                </div>
+                <div class="gcode-stat-item">
+                  <span class="stat-lbl" data-i18n="lblGcodeOrigin">📍 Origin:</span>
+                  <span id="gcodeOrigin" class="stat-val">X: 0.0, Y: 0.0</span>
+                </div>
+                <div class="gcode-stat-item">
+                  <span class="stat-lbl" data-i18n="lblGcodeLaserPower">⚡ Laser Power:</span>
+                  <span id="gcodePowerRange" class="stat-val">S0 - S1000</span>
+                </div>
+                <div class="gcode-stat-item">
+                  <span class="stat-lbl" data-i18n="lblGcodeCutDist">📏 Cut Distance:</span>
+                  <span id="gcodeCutDist" class="stat-val">0 mm</span>
+                </div>
+                <div class="gcode-stat-item">
+                  <span class="stat-lbl" data-i18n="lblGcodeEstTime">⏱️ Estimated Time:</span>
+                  <span id="gcodeEstTime" class="stat-val">0m 0s</span>
+                </div>
+              </div>
+
+              <div class="gcode-actions-box">
+                <span class="actions-box-title" data-i18n="gcodeActionsTitle">Bed Positioning (400×400 mm):</span>
+                <div class="gcode-actions-buttons">
+                  <button id="btnGcodeShiftOrigin" class="btn-secondary btn-sm" data-i18n="btnGcodeShiftOrigin" data-i18n-title="btnGcodeShiftOriginTitle" title="Align to (0,0)">
+                    ↙ Align to (0,0)
+                  </button>
+                  <button id="btnGcodeCenterBed" class="btn-secondary btn-sm" data-i18n="btnGcodeCenterBed" data-i18n-title="btnGcodeCenterBedTitle" title="Center G-code on bed">
+                    ⌖ Center Bed
+                  </button>
+                  <button id="btnGcodeExportCard" class="btn-accent btn-sm" data-i18n="btnGcodeExportCard" data-i18n-title="btnGcodeExportCardTitle" title="Save this G-Code file">
+                    💾 Save
+                  </button>
+                  <button id="btnViewGcodeModal" class="btn-secondary btn-sm" data-i18n="btnViewGcodeModal" data-i18n-title="btnViewGcodeModalTitle" title="Inspect code lines">
+                    👁️ View Code
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- PANE IMÁGENES A G-CODE -->
+          <div id="imageWorkflowPane">
+            <!-- Carga de Imágenes (Múltiples) -->
+            <div class="upload-compact" id="dropArea">
+              <input type="file" id="fileInput" accept="image/*" multiple style="display:none">
+              <div class="upload-text">
+                <span data-i18n="imgDropPrompt">📁 <strong>Load / Add Images</strong> or drag here</span>
+                <span class="upload-sub" data-i18n="imgDropSub">Drag one or multiple images at once (PNG, JPG, BMP, WEBP)</span>
+              </div>
+            </div>
+
+            <!-- MENÚ DE MÚLTIPLES IMÁGENES EN LA MESA -->
+            <div class="settings-box image-layers-box">
+              <div class="box-header-row">
+                <h3><span data-i18n="imgLayersTitle">🖼️ Bed Images Menu</span> (<span id="imgCountBadge">0</span>)</h3>
+                <div class="layers-header-actions">
+                  <button id="btnAddMoreImages" class="btn-secondary btn-xs" type="button" data-i18n="btnAddMoreImages" data-i18n-title="btnAddMoreImagesTitle" title="Add more images to bed">➕ Add</button>
+                  <button id="btnClearAllImages" class="btn-danger btn-xs" type="button" data-i18n="btnClearAllImages" data-i18n-title="btnClearAllImagesTitle" title="Remove all images from bed" style="display:none;">🗑️ Clear</button>
+                </div>
+              </div>
+              <p class="section-hint" data-i18n="imgLayersHint">Check 🖨️ to include in engraving or uncheck to skip. Click to select and move.</p>
+
+              <div id="imageListContainer" class="image-list-container">
+                <div class="empty-images-hint" id="emptyImagesHint" data-i18n="emptyImagesHint">
+                  No images on bed. Load or drag one or multiple images.
+                </div>
+              </div>
+            </div>
+
+            <!-- Posición sobre la mesa de trabajo (de la imagen seleccionada) -->
+            <div class="settings-box" id="selectedImagePropsBox">
+              <div class="box-header-row">
+                <h3><span data-i18n="posImgBoxTitle">📍 Position:</span> <span id="selectedImageNameTag" style="color: var(--laser-cyan); font-weight: normal; font-size: 11px;">(None selected)</span></h3>
+                <span id="selectedImageBadge" class="layer-active-tag" style="display:none;" data-i18n="selectedImageBadge">Selected</span>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="posImgX" data-i18n="lblPosImgX">X Position (mm):</label>
+                  <input type="number" id="posImgX" value="20" min="0" max="400" step="1">
+                </div>
+                <div class="form-group">
+                  <label for="posImgY" data-i18n="lblPosImgY">Y Position (mm):</label>
+                  <input type="number" id="posImgY" value="20" min="0" max="400" step="1">
+                </div>
+              </div>
+            </div>
+
+            <!-- Tamaño de la imagen activa en mm -->
+            <div class="settings-box">
+              <div class="box-header-row">
+                <h3 data-i18n="dimBoxTitle">📏 Engraving Size (mm)</h3>
+                <button id="btnLockAspect" class="btn-toggle active" data-i18n="btnLockAspect" data-i18n-title="btnLockAspectTitle" title="Lock aspect ratio">🔒 Aspect</button>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="dimWidth" data-i18n="lblDimWidth">Width (mm):</label>
+                  <input type="number" id="dimWidth" value="80" min="5" max="400" step="1">
+                </div>
+                <div class="form-group">
+                  <label for="dimHeight" data-i18n="lblDimHeight">Height (mm):</label>
+                  <input type="number" id="dimHeight" value="80" min="5" max="400" step="1">
+                </div>
+              </div>
+
+              <div class="scale-shortcuts">
+                <span class="shortcuts-label" data-i18n="lblScale">Scale:</span>
+                <button class="btn-scale" data-scale="0.5">50%</button>
+                <button class="btn-scale" data-scale="0.75">75%</button>
+                <button class="btn-scale" data-scale="1.0">100%</button>
+                <button class="btn-scale" data-scale="1.5">150%</button>
+                <button class="btn-scale" data-scale="2.0">200%</button>
+                <button id="btnFitBed" class="btn-scale" data-i18n="btnFitBed" data-i18n-title="btnFitBedTitle" title="Fit to maximum bed size">Max</button>
+              </div>
+            </div>
+
+            <!-- Filtros de Imagen y Resolución -->
+            <div class="settings-box">
+              <h3 data-i18n="qualityBoxTitle">⚙️ Conversion &amp; Engraving Quality</h3>
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="algoSelect" data-i18n="lblAlgoSelect">Engraving Method:</label>
+                  <select id="algoSelect">
+                    <option value="dither_atkinson" selected data-i18n="optAlgoAtkinson">Atkinson Dithering (Crisp wood)</option>
+                    <option value="dither_fs" data-i18n="optAlgoFs">Floyd-Steinberg (Smooth gradients)</option>
+                    <option value="grayscale" data-i18n="optAlgoGrayscale">Grayscale (Variable power S)</option>
+                    <option value="threshold" data-i18n="optAlgoThreshold">Pure Black &amp; White (Cut/Silhouette)</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="linesPerMm" data-i18n="lblLinesPerMm">Resolution:</label>
+                  <select id="linesPerMm">
+                    <option value="4" data-i18n="optLines4">4 l/mm (Fast draft)</option>
+                    <option value="6" selected data-i18n="optLines6">6 l/mm (Balanced standard)</option>
+                    <option value="8" data-i18n="optLines8">8 l/mm (High definition)</option>
+                    <option value="10" data-i18n="optLines10">10 l/mm (Ultra-fine detail)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="slider-row">
+                <div class="slider-item">
+                  <div class="slider-lbl"><span data-i18n="lblBrightness">Brightness</span><span id="valBrightness">1.0</span></div>
+                  <input type="range" id="sliderBrightness" min="0.2" max="2.0" step="0.05" value="1.0">
+                </div>
+                <div class="slider-item">
+                  <div class="slider-lbl"><span data-i18n="lblContrast">Contrast</span><span id="valContrast">1.0</span></div>
+                  <input type="range" id="sliderContrast" min="0.2" max="3.0" step="0.05" value="1.0">
+                </div>
+              </div>
+
+              <div class="checkbox-line">
+                <label class="custom-checkbox">
+                  <input type="checkbox" id="chkInvert">
+                  <span data-i18n="chkInvertLabel">Invert Colors (Negative - for dark materials/metal)</span>
+                </label>
+              </div>
+            </div>
+
+            <!-- Calibración y Auto-Home ($H) -->
+            <div class="settings-box auto-home-box">
+              <div class="box-header-row">
+                <h3 data-i18n="autoHomeTitle">🏠 Auto-Home &amp; Limit Switches ($H)</h3>
+                <span class="machine-tag" data-i18n="autoHomeTag">Active Calibration</span>
+              </div>
+              <div class="checkbox-line" style="margin-top: 8px;">
+                <label class="custom-checkbox">
+                  <input type="checkbox" id="chkAutoHomeEnd" checked>
+                  <span data-i18n="chkAutoHomeEndLabel"><strong>Auto-Home on job completion</strong> (Calibrates to Home 0,0)</span>
+                </label>
+              </div>
+              <div class="checkbox-line" style="margin-top: 6px;">
+                <label class="custom-checkbox">
+                  <input type="checkbox" id="chkAutoHomeBetween" checked>
+                  <span data-i18n="chkAutoHomeBetweenLabel"><strong>Auto-Home after each drawing</strong> (In multi-image batch)</span>
+                </label>
+              </div>
+              <div class="checkbox-line" style="margin-top: 6px;">
+                <label class="custom-checkbox">
+                  <input type="checkbox" id="chkHardwareHoming" checked>
+                  <span data-i18n="chkHardwareHomingLabel"><strong style="color: var(--laser-cyan);">Limit switches cycle ($H) active</strong> (Runs calibrated $H without forcing start)</span>
+                </label>
+              </div>
+              <p class="section-hint" style="margin-top: 6px; margin-bottom: 2px;" data-i18n="autoHomeHint">
+                💡 <strong>Always starts from Home (0,0):</strong> The cycle <code>$H</code> references limit switches without hitting rails and resynchronizes coordinates after each engraving.
+              </p>
+            </div>
+
+            <!-- Botones Generar y Guardar G-code -->
+            <div class="gcode-generate-export-group">
+              <button id="btnGenerateGcode" class="btn-accent btn-large full-width" data-i18n="btnGenerateGcodeSide">
+                ⚡ Generate G-Code for this Position
+              </button>
+              <div class="export-actions-row">
+                <button id="btnExportGcodeSide" class="btn-secondary btn-sm" data-i18n="btnExportGcodeSide" data-i18n-title="btnExportGcodeSideTitle" title="Save with native Linux dialog">
+                  💾 Save .GCODE File
+                </button>
+                <button id="btnExportNcSide" class="btn-secondary btn-sm btn-nc" data-i18n-title="btnExportNcSideTitle" title="Export .NC (Universal CNC)">
+                  .NC
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- PESTAÑA 2: POTENCIA Y PERFILES DE MATERIALES CREALITY FALCON -->
+        <div id="tabLaserSettings" class="side-pane">
+          <div class="settings-box">
+            <div class="box-header-row">
+              <h3 data-i18n="machineWattTitle">⚡ Machine Optical Power</h3>
+              <span class="machine-tag">450nm Diode</span>
+            </div>
+            <select id="machineWattSelect" class="full-width">
+              <option value="5w" selected data-i18n="optWatt5w">Creality Falcon 5W (Your current machine)</option>
+              <option value="10w" data-i18n="optWatt10w">Creality Falcon 10W (Dual Diode)</option>
+              <option value="22w" data-i18n="optWatt22w">Creality Falcon 22W / 40W (High Power)</option>
+            </select>
+          </div>
+
+          <div class="settings-box">
+            <div class="box-header-row">
+              <h3 data-i18n="materialProfilesTitle">📚 Material Profiles &amp; Power</h3>
+              <div class="custom-profile-btns" id="customProfileActions">
+                <button id="btnSaveCustomProfile" class="btn-secondary btn-xs" data-i18n="btnSaveCustomProfile" data-i18n-title="btnSaveCustomProfileTitle" title="Save current settings as new profile">💾 Save Profile</button>
+                <button id="btnDeleteCustomProfile" class="btn-danger btn-xs" style="display:none;" data-i18n="btnDeleteCustomProfile" data-i18n-title="btnDeleteCustomProfileTitle" title="Delete this custom profile">🗑️ Delete</button>
+              </div>
+            </div>
+
+            <select id="presetSelect" class="full-width" style="margin-bottom: 8px;">
+            </select>
+
+            <div id="materialInfoCard" class="material-info-card">
+              <div class="material-card-header">
+                <span id="matCardTitle" class="mat-card-title">Wood - Detailed Photo Engraving</span>
+                <span id="matCardBadge" class="mat-card-badge engrave">ENGRAVE</span>
+              </div>
+              <div class="material-specs-grid">
+                <div><span data-i18n="matPowerLbl">Power:</span> <strong id="matCardPower">0 - 750 (75%)</strong></div>
+                <div><span data-i18n="matSpeedLbl">Speed:</span> <strong id="matCardSpeed">3500 mm/min</strong></div>
+                <div><span data-i18n="matPassesLbl">Passes:</span> <strong id="matCardPasses">1</strong></div>
+                <div><span data-i18n="matModeLbl">Laser Mode:</span> <strong id="matCardMode">M4 (Dynamic)</strong></div>
+              </div>
+              <div id="matCardTip" class="material-tip">
+                Tip: Atkinson dithering brings out soft gradients without overburning.
+              </div>
+            </div>
+          </div>
+
+          <div class="settings-box">
+            <h3 data-i18n="manualSettingsTitle">🎛️ Manual Laser Power Settings</h3>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="minPower" data-i18n="lblMinPower">Minimum Power (S):</label>
+                <input type="number" id="minPower" value="0" min="0" max="1000" step="10">
+              </div>
+              <div class="form-group">
+                <label for="maxPower" data-i18n="lblMaxPower">Maximum Power (S):</label>
+                <input type="number" id="maxPower" value="850" min="0" max="1000" step="10">
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="laserMode" data-i18n="lblLaserMode">GRBL Laser Mode:</label>
+                <select id="laserMode">
+                  <option value="M4" selected data-i18n="optModeM4">M4 (Dynamic - scales with speed)</option>
+                  <option value="M3" data-i18n="optModeM3">M3 (Constant - fixed power)</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="speedEngrave" data-i18n="lblSpeedEngrave">Engraving Speed (mm/min):</label>
+                <input type="number" id="speedEngrave" value="3500" min="100" max="10000" step="100">
+              </div>
+              <div class="form-group">
+                <label for="passCount" data-i18n="lblPassCount">Cut Passes:</label>
+                <input type="number" id="passCount" value="1" min="1" max="10" step="1">
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </aside>
+
+  </main>
+
+  <!-- MODAL DE VISUALIZACIÓN / INSPECCIÓN DE G-CODE -->
+  <div id="gcodeModalOverlay" class="modal-overlay" style="display: none;">
+    <div class="modal-content gcode-modal">
+      <div class="modal-header">
+        <h3 id="modalGcodeTitle" data-i18n="modalGcodeTitle">📄 G-Code Inspection</h3>
+        <button id="btnCloseGcodeModal" class="btn-icon">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-toolbar">
+          <span id="modalGcodeStats" class="modal-badge">0 lines</span>
+          <button id="btnCopyGcode" class="btn-secondary btn-sm" data-i18n="btnCopyGcode">📋 Copy G-Code</button>
+          <button id="btnModalDownloadGcode" class="btn-secondary btn-sm" data-i18n="btnModalDownloadGcode">💾 Save File</button>
+        </div>
+        <textarea id="modalGcodeText" readonly spellcheck="false" class="gcode-textarea"></textarea>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

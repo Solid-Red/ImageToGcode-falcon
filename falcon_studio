@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# ============================================================
+# Lanzador de Falcon G-Code Studio v3 (Nativo Linux)
+# Creality Falcon 5W • Mesa de Trabajo 400 × 400 mm
+# ============================================================
+
+set -e
+
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$DIR"
+
+# Ejecutar el programa nativo de escritorio GTK 3.0
+exec python3 falcon_app.py "$@"
