@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "1aed8651-db1c-4af9-be88-e373c7b459a8",
+  "status": "current",
+  "command": "deliver",
+  "type": "explainer",
+  "input": "/home/redkatt/Documents/programming/falcon_laser_v3/.archify/explainer-falcon-laser-v3-20261018-172944/candidate.archify.md",
+  "output": "/home/redkatt/Documents/programming/falcon_laser_v3/.archify/explainer-falcon-laser-v3-20261018-172944/falcon-laser-v3-analisis.html",
+  "specification": {
+    "sha256": "25b2287981b401cf6e699eac8b34d9df714b1fe2a6c4eee204c72f59351615d6",
+    "bytes": 6270
+  },
+  "artifact": {
+    "sha256": "edc9cceb326d0d8a734ba07f2d4df6d5e1ff2e6fa6c4e2e00aa575a27d758296",
+    "bytes": 1360919
+  },
+  "explainer": {
+    "preparedSha256": "aeb8cb78fd94262e6509365f1665d1e2c55fd435dc21ea1c55206474a62c9ea1",
+    "dependencies": [
+      {
+        "kind": "repository",
+        "id": "app",
+        "path": "falcon_app.py",
+        "revision": "778babd6bdeee9cd39865961889502a6abfb6256",
+        "sha256": "844c6518c5544476a204c06cb416f6b77b6e0209bf8016a52319ee9967544c93",
+        "bytes": 23355
+      },
+      {
+        "kind": "repository",
+        "id": "engine",
+        "path": "falcon_engine.py",
+        "revision": "778babd6bdeee9cd39865961889502a6abfb6256",
+        "sha256": "b35c6f7e1d3d99f1b1cbc4e90d6ad5755aaa839c8664ae8a91feb36f5830d58a",
+        "bytes": 11630
+      },
+      {
+        "kind": "diagram-spec",
+        "id": "arch-falcon",
+        "inline": true,
+        "sha256": "3039dc24c796c34b60515d88332c5ed9396bf7d2760bc291f12cc37329bc6286",
+        "bytes": 1192
+      },
+      {
+        "kind": "diagram-spec",
+        "id": "flow-gcode",
+        "inline": true,
+        "sha256": "7ab4164d85b312fd831410607026a11bba5a7a1664af34a0767056c761ac49cb",
+        "bytes": 1683
+      },
+      {
+        "kind": "diagram-spec",
+        "id": "seq-save",
+        "inline": true,
+        "sha256": "bdd25245e03eac1634bb6805eb6f3e4ab2f341b8f4df7fa9427a7cf0abc42bbe",
+        "bytes": 1273
+      }
+    ]
+  }
+}

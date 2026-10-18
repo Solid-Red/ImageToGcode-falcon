@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "finalize",
+  "status": "pass",
+  "type": "explainer",
+  "quality": "showcase",
+  "specification": {
+    "path": "/home/redkatt/Documents/programming/falcon_laser_v3/.archify/explainer-falcon-laser-v3-20261018-172944/candidate.archify.md",
+    "sha256": "25b2287981b401cf6e699eac8b34d9df714b1fe2a6c4eee204c72f59351615d6",
+    "bytes": 6270
+  },
+  "artifact": {
+    "path": "/home/redkatt/Documents/programming/falcon_laser_v3/.archify/explainer-falcon-laser-v3-20261018-172944/falcon-laser-v3-analisis.html",
+    "sha256": "edc9cceb326d0d8a734ba07f2d4df6d5e1ff2e6fa6c4e2e00aa575a27d758296",
+    "bytes": 1360919
+  },
+  "gates": {
+    "validate": "pass",
+    "deliver": "pass",
+    "check": "pass",
+    "browser-check": "not-run"
+  },
+  "diagnostics": [
+    {
+      "code": "explainer/writing-sentence-length",
+      "severity": "warning",
+      "message": "Sentence has 32 reading units, above the configured en limit of 28.",
+      "subject": {
+        "input": "/home/redkatt/Documents/programming/falcon_laser_v3/.archify/explainer-falcon-laser-v3-20261018-172944/candidate.archify.md",
+        "line": 3,
+        "component": "answer"
+      },
+      "evidence": {
+        "reason": "Sentence has 32 reading units, above the configured en limit of 28.",
+        "example": "先查缓存。未命中时再查数据库。 / Check the cache first. Query the database on a miss.",
+        "rule": "sentence-length",
+        "units": 32,
+        "limit": 28
+      },
+      "supportedFixes": [
+        "Split at a logical action or condition boundary while preserving qualifications and causal links."
+      ]
+    }
+  ],
+  "diagnosticSummary": {
+    "total": 1,
+    "shown": 1,
+    "truncated": false
+  },
+  "evidence": {
+    "receipt": "/home/redkatt/Documents/programming/falcon_laser_v3/.archify/explainer-falcon-laser-v3-20261018-172944/falcon-laser-v3-analisis.finalize.json",
+    "summaryReceipt": "/home/redkatt/Documents/programming/falcon_laser_v3/.archify/explainer-falcon-laser-v3-20261018-172944/falcon-laser-v3-analisis.finalize-summary.json"
+  },
+  "visualReview": "not-requested",
+  "durationMs": 5136,
+  "browserCheck": {
+    "requested": false,
+    "ran": false
+  }
+}

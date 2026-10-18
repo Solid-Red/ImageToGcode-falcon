@@ -10,21 +10,69 @@ import sys
 import json
 import base64
 import io
+import re
 import socket
 import threading
+import subprocess
 import urllib.parse
 import http.server
+from datetime import datetime
+from typing import Tuple, List, Optional
+# ============================================================
+# VERIFICACIÓN E INSTALACIÓN AUTOMÁTICA DE DEPENDENCIAS (PIP)
+# ============================================================
+def ensure_dependencies():
+    """
+    Verifica que las librerías necesarias de Python estén instaladas.
+    Si alguna falta, intenta instalarla automáticamente mediante pip.
+    """
+    required_packages = {
+        "PIL": "Pillow",
+        "numpy": "numpy",
+    }
+    missing = []
+    for module_name, pip_name in required_packages.items():
+        try:
+            __import__(module_name)
+        except ImportError:
+            missing.append(pip_name)
+
+    if missing:
+        print("=" * 65)
+        print("📦 FALCON G-CODE STUDIO v3 - VERIFICACIÓN DE DEPENDENCIAS")
+        print(f"   Librerías faltantes: {', '.join(missing)}")
+        print("   Instalando dependencias automáticamente mediante pip...")
+        print("=" * 65)
+
+        # 1. Intentar instalación estándar con pip
+        cmd = [sys.executable, "-m", "pip", "install"] + missing
+        res = subprocess.run(cmd)
+
+        # 2. Si falla (PEP 668 en Debian/Ubuntu/Mint modernos), reintentar con --break-system-packages
+        if res.returncode != 0:
+            print("   Reintentando con opción '--break-system-packages'...")
+            cmd_override = [sys.executable, "-m", "pip", "install", "--break-system-packages"] + missing
+            res = subprocess.run(cmd_override)
+
+        # 3. Si aún falla, probar con --user y --break-system-packages
+        if res.returncode != 0:
+            print("   Reintentando con '--user --break-system-packages'...")
+            cmd_user = [sys.executable, "-m", "pip", "install", "--user", "--break-system-packages"] + missing
+            res = subprocess.run(cmd_user)
+
+        if res.returncode != 0:
+            print("\n❌ Error: No se pudieron instalar automáticamente todas las librerías.")
+            print("👉 Por favor ejecuta manualmente en tu terminal:")
+            print(f"   pip install {' '.join(missing)} --break-system-packages")
+            print("   O mediante el gestor de paquetes de tu distribución Linux:")
+            print("   sudo apt install python3-pil python3-numpy")
+            sys.exit(1)
+
+        print("✅ Dependencias de Python instaladas exitosamente.\n")
+
+ensure_dependencies()
+
 from PIL import Image
-
-# 1. Cargar librerías nativas del sistema Linux GNOME / GTK
-import gi
-gi.require_version("Gtk", "3.0")
-try:
-    gi.require_version("WebKit2", "4.1")
-except ValueError:
-    gi.require_version("WebKit2", "4.0")
-
-from gi.repository import Gtk, WebKit2, GLib, Gdk, GdkPixbuf
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 if APP_DIR not in sys.path:
@@ -32,10 +80,113 @@ if APP_DIR not in sys.path:
 
 from falcon_engine import FalconImageGcodeGenerator
 
-UI_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ui")
+# Cargar librerías nativas del sistema Linux GNOME / GTK con detección segura
+HAS_GTK = False
+GTK_IMPORT_ERROR = ""
+try:
+    import gi
+    gi.require_version("Gtk", "3.0")
+    try:
+        gi.require_version("WebKit2", "4.1")
+    except ValueError:
+        gi.require_version("WebKit2", "4.0")
+
+    from gi.repository import Gtk, WebKit2, GLib, Gdk, GdkPixbuf
+    HAS_GTK = True
+except Exception as e:
+    HAS_GTK = False
+    GTK_IMPORT_ERROR = str(e)
+
+UI_DIR = os.path.join(APP_DIR, "ui")
+
+# ============================================================
+# CARPETAS PREDEFINIDAS DE SALIDA (G-CODE E IMÁGENES DE RESPALDO)
+# ============================================================
+OUTPUT_DIR = os.path.join(APP_DIR, "output")
+GCODE_OUTPUT_DIR = os.path.join(OUTPUT_DIR, "gcodes")
+IMAGES_OUTPUT_DIR = os.path.join(OUTPUT_DIR, "images")
+
+# Garantizar creación inmediata de las carpetas predefinidas
+os.makedirs(GCODE_OUTPUT_DIR, exist_ok=True)
+os.makedirs(IMAGES_OUTPUT_DIR, exist_ok=True)
+
 latest_generated_gcode = ""
 latest_job_filename = "falcon_grabado.gcode"
 main_window_ref = None
+
+def sanitize_filename_base(name: str) -> str:
+    """Extrae el nombre base sin extensión y elimina caracteres no válidos."""
+    if not name:
+        return "imagen"
+    base = os.path.basename(name)
+    name_no_ext, _ = os.path.splitext(base)
+    clean = re.sub(r'[^\w\-. ]', '_', name_no_ext).strip()
+    return clean if clean else "imagen"
+
+def save_used_image(item: dict, timestamp: str) -> Optional[str]:
+    """
+    Guarda una copia de la imagen usada en la carpeta predefinida de imágenes
+    con el formato: <nombre_original>_<YYYYMMDD_HHMMSS>.<ext>
+    """
+    name = item.get("name", "imagen")
+    img_data_uri = item.get("image_base64", "")
+    if not img_data_uri:
+        return None
+
+    ext = ".png"
+    if "," in img_data_uri:
+        header, b64_str = img_data_uri.split(",", 1)
+        if "image/jpeg" in header or "image/jpg" in header:
+            ext = ".jpg"
+        elif "image/webp" in header:
+            ext = ".webp"
+        elif "image/bmp" in header:
+            ext = ".bmp"
+    else:
+        b64_str = img_data_uri
+
+    orig_base = os.path.basename(name)
+    _, orig_ext = os.path.splitext(orig_base)
+    if orig_ext.lower() in [".png", ".jpg", ".jpeg", ".bmp", ".webp"]:
+        ext = orig_ext.lower()
+
+    clean_name = sanitize_filename_base(name)
+    filename = f"{clean_name}_{timestamp}{ext}"
+    dest_path = os.path.join(IMAGES_OUTPUT_DIR, filename)
+
+    counter = 1
+    while os.path.exists(dest_path):
+        filename = f"{clean_name}_{timestamp}_{counter}{ext}"
+        dest_path = os.path.join(IMAGES_OUTPUT_DIR, filename)
+        counter += 1
+
+    try:
+        raw_bytes = base64.b64decode(b64_str)
+        with open(dest_path, "wb") as f:
+            f.write(raw_bytes)
+        return filename
+    except Exception as ex:
+        print(f"Error al guardar copia de imagen ({name}): {ex}")
+        return None
+
+def save_generated_gcode(gcode_text: str, base_job_name: str, timestamp: str) -> Tuple[str, str]:
+    """
+    Guarda automáticamente el G-code generado en la carpeta predefinida de gcodes.
+    """
+    clean_base = sanitize_filename_base(base_job_name)
+    filename = f"{clean_base}_{timestamp}.gcode"
+    dest_path = os.path.join(GCODE_OUTPUT_DIR, filename)
+
+    counter = 1
+    while os.path.exists(dest_path):
+        filename = f"{clean_base}_{timestamp}_{counter}.gcode"
+        dest_path = os.path.join(GCODE_OUTPUT_DIR, filename)
+        counter += 1
+
+    with open(dest_path, "w", encoding="utf-8") as f:
+        f.write(gcode_text)
+
+    return filename, dest_path
 
 # ============================================================
 # MICRO-SERVICIO HTTP INTERNO (EMBEDDED LOOPBACK)
@@ -58,7 +209,15 @@ class StudioInternalHandler(http.server.SimpleHTTPRequestHandler):
                 "success": True,
                 "filename": latest_job_filename,
                 "gcode": latest_generated_gcode,
-                "line_count": len(latest_generated_gcode.splitlines()) if latest_generated_gcode else 0
+                "line_count": len(latest_generated_gcode.splitlines()) if latest_generated_gcode else 0,
+                "gcode_dir": GCODE_OUTPUT_DIR,
+                "images_dir": IMAGES_OUTPUT_DIR
+            })
+        elif path == "/api/output_paths":
+            self._send_json({
+                "success": True,
+                "gcode_dir": GCODE_OUTPUT_DIR,
+                "images_dir": IMAGES_OUTPUT_DIR
             })
         elif path == "/api/download_gcode":
             data = latest_generated_gcode.encode("utf-8")
@@ -83,7 +242,21 @@ class StudioInternalHandler(http.server.SimpleHTTPRequestHandler):
         except Exception:
             body = {}
 
-        if path == "/api/load_gcode":
+        if path == "/api/open_folder":
+            target_type = body.get("type", "gcodes")
+            target_dir = IMAGES_OUTPUT_DIR if target_type == "images" else GCODE_OUTPUT_DIR
+            try:
+                if sys.platform == "win32":
+                    os.startfile(target_dir)
+                elif sys.platform == "darwin":
+                    subprocess.Popen(["open", target_dir])
+                else:
+                    subprocess.Popen(["xdg-open", target_dir])
+                self._send_json({"success": True, "path": target_dir})
+            except Exception as ex:
+                self._send_json({"success": False, "error": str(ex)})
+
+        elif path == "/api/load_gcode":
             latest_generated_gcode = body.get("gcode", "")
             latest_job_filename = body.get("filename", "falcon_job.gcode")
             self._send_json({
@@ -93,13 +266,52 @@ class StudioInternalHandler(http.server.SimpleHTTPRequestHandler):
             })
 
         elif path == "/api/native_save_file":
-            # Diálogo nativo de guardado GTK
+            # Diálogo nativo de guardado (GTK en Linux, Tkinter en Windows/fallback)
             gcode_content = body.get("gcode", latest_generated_gcode)
             suggested_name = body.get("filename", latest_job_filename)
 
             dialog_title = body.get("dialog_title", "Save G-Code File")
             filter_gcode_label = body.get("filter_gcode_name", "G-Code Files (*.gcode, *.nc)")
             filter_all_label = body.get("filter_all_name", "All Files (*.*)")
+
+            if not HAS_GTK or main_window_ref is None:
+                # Si no hay GTK disponible (ej: Windows o navegador fallback), intentar diálogo Tkinter
+                saved_target = None
+                try:
+                    import tkinter as tk
+                    from tkinter import filedialog
+                    root = tk.Tk()
+                    root.withdraw()
+                    root.attributes('-topmost', True)
+                    chosen = filedialog.asksaveasfilename(
+                        title=dialog_title,
+                        initialdir=GCODE_OUTPUT_DIR,
+                        initialfile=suggested_name,
+                        filetypes=[
+                            (filter_gcode_label, "*.gcode;*.nc"),
+                            (filter_all_label, "*.*")
+                        ]
+                    )
+                    root.destroy()
+                    if chosen:
+                        saved_target = chosen
+                except Exception:
+                    pass
+
+                # Si el usuario canceló el diálogo
+                if saved_target == "":
+                    self._send_json({"success": False, "cancelled": True})
+                    return
+
+                # Si no se pudo abrir Tkinter o no seleccionó, guardar directamente en la carpeta predefinida
+                auto_target = saved_target if saved_target else os.path.join(GCODE_OUTPUT_DIR, suggested_name)
+                try:
+                    with open(auto_target, "w", encoding="utf-8") as f:
+                        f.write(gcode_content)
+                    self._send_json({"success": True, "path": auto_target})
+                except Exception as ex:
+                    self._send_json({"success": False, "error": str(ex)})
+                return
 
             saved_path = [None]
             event = threading.Event()
@@ -116,6 +328,8 @@ class StudioInternalHandler(http.server.SimpleHTTPRequestHandler):
                         Gtk.STOCK_SAVE, Gtk.ResponseType.OK
                     )
                     dialog.set_do_overwrite_confirmation(True)
+                    # Abrir por defecto en la carpeta predefinida de gcodes
+                    dialog.set_current_folder(GCODE_OUTPUT_DIR)
                     dialog.set_current_name(suggested_name)
 
                     # Filtro .gcode / .nc
@@ -181,6 +395,13 @@ class StudioInternalHandler(http.server.SimpleHTTPRequestHandler):
                     auto_home_between = bool(body.get("auto_home_between", True))
                     hardware_homing = bool(body.get("hardware_homing", True))
 
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    saved_images = []
+                    for idx, item in enumerate(active_items):
+                        saved_img = save_used_image(item, timestamp)
+                        if saved_img:
+                            saved_images.append(saved_img)
+
                     for idx, item in enumerate(active_items):
                         name = item.get("name", f"Imagen_{idx+1}")
                         img_data_uri = item.get("image_base64", "")
@@ -191,6 +412,12 @@ class StudioInternalHandler(http.server.SimpleHTTPRequestHandler):
 
                         image_bytes = base64.b64decode(b64_str)
                         pil_img = Image.open(io.BytesIO(image_bytes))
+                        if pil_img.mode in ("RGBA", "LA") or (pil_img.mode == "P" and "transparency" in pil_img.info):
+                            bg = Image.new("RGB", pil_img.size, (255, 255, 255))
+                            if pil_img.mode != "RGBA":
+                                pil_img = pil_img.convert("RGBA")
+                            bg.paste(pil_img, mask=pil_img.split()[3])
+                            pil_img = bg
 
                         width_mm = float(item.get("width_mm", 80.0))
                         height_mm = float(item.get("height_mm", 80.0))
@@ -210,6 +437,19 @@ class StudioInternalHandler(http.server.SimpleHTTPRequestHandler):
                         threshold = int(item.get("threshold", body.get("threshold", 128)))
                         passes = int(item.get("passes", body.get("passes", 1)))
 
+                        work_mode = item.get("work_mode", body.get("work_mode", "barrido"))
+                        vector_op = item.get("vector_op", body.get("vector_op", "cut"))
+                        vector_type = item.get("vector_type", body.get("vector_type", "contour_outer" if vector_op == "cut" else "contour"))
+                        tool_type = item.get("tool_type", body.get("tool_type", "laser"))
+                        z_up = float(item.get("z_up", body.get("z_up", 3.0)))
+                        z_down = float(item.get("z_down", body.get("z_down", 0.0)))
+                        z_speed = float(item.get("z_speed", body.get("z_speed", 1200.0)))
+                        curve_tolerance = float(item.get("curve_tolerance", body.get("curve_tolerance", 0.35)))
+                        default_spd = 300.0 if vector_op == "cut" else (1500.0 if vector_op == "score" else 2500.0)
+                        speed_draw = float(item.get("speed_draw", body.get("speed_draw", default_spd)))
+                        if work_mode == "seguimiento" and vector_op == "cut" and ("laser_mode" not in item or not item["laser_mode"]):
+                            laser_mode = "M3"
+
                         min_x_all = min(min_x_all, origin_x)
                         max_x_all = max(max_x_all, origin_x + width_mm)
                         min_y_all = min(min_y_all, origin_y)
@@ -225,24 +465,46 @@ class StudioInternalHandler(http.server.SimpleHTTPRequestHandler):
                             contrast=contrast,
                             gamma=gamma,
                             invert=invert,
-                            mode=algorithm,
+                            mode=algorithm if work_mode == "barrido" else "threshold",
                             threshold=threshold
                         )
 
-                        res = FalconImageGcodeGenerator.generate_gcode(
-                            burn_map,
-                            width_mm=width_mm,
-                            height_mm=height_mm,
-                            speed_engrave=speed_engrave,
-                            speed_travel=speed_travel,
-                            min_power=min_power,
-                            max_power=max_power,
-                            laser_mode=laser_mode,
-                            origin_x=origin_x,
-                            origin_y=origin_y,
-                            passes=passes,
-                            auto_home_end=False
-                        )
+                        if work_mode == "seguimiento":
+                            res = FalconImageGcodeGenerator.generate_vector_gcode(
+                                burn_map,
+                                width_mm=width_mm,
+                                height_mm=height_mm,
+                                speed_draw=speed_draw,
+                                speed_travel=speed_travel,
+                                laser_power=max_power,
+                                laser_mode=laser_mode,
+                                tool_type=tool_type,
+                                z_up=z_up,
+                                z_down=z_down,
+                                z_speed=z_speed,
+                                vector_type=vector_type,
+                                curve_tolerance_mm=curve_tolerance,
+                                threshold=threshold,
+                                origin_x=origin_x,
+                                origin_y=origin_y,
+                                passes=passes,
+                                auto_home_end=False
+                            )
+                        else:
+                            res = FalconImageGcodeGenerator.generate_gcode(
+                                burn_map,
+                                width_mm=width_mm,
+                                height_mm=height_mm,
+                                speed_engrave=speed_engrave,
+                                speed_travel=speed_travel,
+                                min_power=min_power,
+                                max_power=max_power,
+                                laser_mode=laser_mode,
+                                origin_x=origin_x,
+                                origin_y=origin_y,
+                                passes=passes,
+                                auto_home_end=False
+                            )
 
                         total_cut_dist += res["cut_dist_mm"]
                         total_rapid_dist += res["rapid_dist_mm"]
@@ -260,7 +522,12 @@ class StudioInternalHandler(http.server.SimpleHTTPRequestHandler):
                         combined_gcode_lines.append(f"\n; ----------------------------------------------------------")
                         combined_gcode_lines.append(f"; [ELEMENTO {idx+1}/{len(active_items)}]: {name}")
                         combined_gcode_lines.append(f"; Posición: X={origin_x:.2f} mm, Y={origin_y:.2f} mm | Medidas: {width_mm:.2f} × {height_mm:.2f} mm")
-                        combined_gcode_lines.append(f"; Potencia: S{min_power} a S{max_power} ({laser_mode}) | Avance: {speed_engrave:.0f} mm/min")
+                        if work_mode == "seguimiento":
+                            combined_gcode_lines.append(f"; Estilo: VECTOR ({vector_op.upper()} - {vector_type}) | Pasadas: {passes}")
+                            combined_gcode_lines.append(f"; Potencia: S{max_power} ({laser_mode}) | Avance: {speed_draw:.0f} mm/min")
+                        else:
+                            combined_gcode_lines.append(f"; Estilo: BARRIDO RASTER ({algorithm}) | Pasadas: {passes}")
+                            combined_gcode_lines.append(f"; Potencia: S{min_power} a S{max_power} ({laser_mode}) | Avance: {speed_engrave:.0f} mm/min | Res: {lines_per_mm} l/mm")
                         combined_gcode_lines.append(f"; ----------------------------------------------------------")
                         combined_gcode_lines.extend(item_lines)
                         combined_gcode_lines.append("M5 ; Apagar láser tras finalizar este elemento")
@@ -286,8 +553,17 @@ class StudioInternalHandler(http.server.SimpleHTTPRequestHandler):
                     combined_gcode_lines.append("M2 ; Fin de programa")
 
                     full_gcode = "\n".join(combined_gcode_lines)
+
+                    if len(active_items) == 1:
+                        clean_item_name = sanitize_filename_base(active_items[0].get("name", "imagen"))
+                        base_job_name = f"falcon_{clean_item_name}"
+                    else:
+                        base_job_name = f"falcon_multi_{len(active_items)}_imagenes"
+
+                    auto_gcode_name, auto_gcode_path = save_generated_gcode(full_gcode, base_job_name, timestamp)
+
                     latest_generated_gcode = full_gcode
-                    latest_job_filename = f"falcon_multi_{len(active_items)}_imagenes.gcode"
+                    latest_job_filename = auto_gcode_name
 
                     mins = int(total_est_seconds // 60)
                     secs = int(total_est_seconds % 60)
@@ -298,6 +574,11 @@ class StudioInternalHandler(http.server.SimpleHTTPRequestHandler):
                         "gcode": full_gcode,
                         "line_count": len(combined_gcode_lines),
                         "filename": latest_job_filename,
+                        "auto_saved_gcode": auto_gcode_name,
+                        "auto_saved_gcode_path": auto_gcode_path,
+                        "gcode_dir": GCODE_OUTPUT_DIR,
+                        "saved_images": saved_images,
+                        "images_dir": IMAGES_OUTPUT_DIR,
                         "width_mm": max(0.0, max_x_all - min_x_all),
                         "height_mm": max(0.0, max_y_all - min_y_all),
                         "rapid_dist_mm": round(total_rapid_dist, 1),
@@ -324,6 +605,12 @@ class StudioInternalHandler(http.server.SimpleHTTPRequestHandler):
 
                 image_bytes = base64.b64decode(b64_str)
                 pil_img = Image.open(io.BytesIO(image_bytes))
+                if pil_img.mode in ("RGBA", "LA") or (pil_img.mode == "P" and "transparency" in pil_img.info):
+                    bg = Image.new("RGB", pil_img.size, (255, 255, 255))
+                    if pil_img.mode != "RGBA":
+                        pil_img = pil_img.convert("RGBA")
+                    bg.paste(pil_img, mask=pil_img.split()[3])
+                    pil_img = bg
 
                 width_mm = float(body.get("width_mm", 100.0))
                 height_mm = float(body.get("height_mm", 100.0))
@@ -343,6 +630,19 @@ class StudioInternalHandler(http.server.SimpleHTTPRequestHandler):
                 threshold = int(body.get("threshold", 128))
                 passes = int(body.get("passes", 1))
 
+                work_mode = body.get("work_mode", "barrido")
+                vector_op = body.get("vector_op", "cut")
+                vector_type = body.get("vector_type", "contour_outer" if vector_op == "cut" else "contour")
+                tool_type = body.get("tool_type", "laser")
+                z_up = float(body.get("z_up", 3.0))
+                z_down = float(body.get("z_down", 0.0))
+                z_speed = float(body.get("z_speed", 1200.0))
+                curve_tolerance = float(body.get("curve_tolerance", 0.35))
+                default_spd = 300.0 if vector_op == "cut" else 2500.0
+                speed_draw = float(body.get("speed_draw", default_spd))
+                if work_mode == "seguimiento" and vector_op == "cut":
+                    laser_mode = "M3"
+
                 target_cols = max(1, int(round(width_mm * lines_per_mm)))
                 target_rows = max(1, int(round(height_mm * lines_per_mm)))
                 resized_img = pil_img.resize((target_cols, target_rows), Image.Resampling.LANCZOS)
@@ -353,31 +653,65 @@ class StudioInternalHandler(http.server.SimpleHTTPRequestHandler):
                     contrast=contrast,
                     gamma=gamma,
                     invert=invert,
-                    mode=algorithm,
+                    mode=algorithm if work_mode == "barrido" else "threshold",
                     threshold=threshold
                 )
 
                 auto_home_end = bool(body.get("auto_home_end", True))
                 hardware_homing = bool(body.get("hardware_homing", True))
 
-                result = FalconImageGcodeGenerator.generate_gcode(
-                    burn_map,
-                    width_mm=width_mm,
-                    height_mm=height_mm,
-                    speed_engrave=speed_engrave,
-                    speed_travel=speed_travel,
-                    min_power=min_power,
-                    max_power=max_power,
-                    laser_mode=laser_mode,
-                    origin_x=origin_x,
-                    origin_y=origin_y,
-                    passes=passes,
-                    auto_home_end=auto_home_end,
-                    hardware_homing=hardware_homing
-                )
+                if work_mode == "seguimiento":
+                    result = FalconImageGcodeGenerator.generate_vector_gcode(
+                        burn_map,
+                        width_mm=width_mm,
+                        height_mm=height_mm,
+                        speed_draw=speed_draw,
+                        speed_travel=speed_travel,
+                        laser_power=max_power,
+                        laser_mode=laser_mode,
+                        tool_type=tool_type,
+                        z_up=z_up,
+                        z_down=z_down,
+                        z_speed=z_speed,
+                        vector_type=vector_type,
+                        curve_tolerance_mm=curve_tolerance,
+                        threshold=threshold,
+                        origin_x=origin_x,
+                        origin_y=origin_y,
+                        passes=passes,
+                        auto_home_end=auto_home_end,
+                        hardware_homing=hardware_homing
+                    )
+                else:
+                    result = FalconImageGcodeGenerator.generate_gcode(
+                        burn_map,
+                        width_mm=width_mm,
+                        height_mm=height_mm,
+                        speed_engrave=speed_engrave,
+                        speed_travel=speed_travel,
+                        min_power=min_power,
+                        max_power=max_power,
+                        laser_mode=laser_mode,
+                        origin_x=origin_x,
+                        origin_y=origin_y,
+                        passes=passes,
+                        auto_home_end=auto_home_end,
+                        hardware_homing=hardware_homing
+                    )
+
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                single_item_mock = {
+                    "name": body.get("name", f"falcon_{int(width_mm)}x{int(height_mm)}mm"),
+                    "image_base64": img_data_uri
+                }
+                saved_img = save_used_image(single_item_mock, timestamp)
+                saved_images = [saved_img] if saved_img else []
+
+                base_job_name = f"falcon_{sanitize_filename_base(single_item_mock['name'])}"
+                auto_gcode_name, auto_gcode_path = save_generated_gcode(result["gcode"], base_job_name, timestamp)
 
                 latest_generated_gcode = result["gcode"]
-                latest_job_filename = f"falcon_{int(width_mm)}x{int(height_mm)}mm.gcode"
+                latest_job_filename = auto_gcode_name
 
                 buffered = io.BytesIO()
                 preview_img.save(buffered, format="PNG")
@@ -385,6 +719,11 @@ class StudioInternalHandler(http.server.SimpleHTTPRequestHandler):
 
                 result["preview_base64"] = preview_b64
                 result["filename"] = latest_job_filename
+                result["auto_saved_gcode"] = auto_gcode_name
+                result["auto_saved_gcode_path"] = auto_gcode_path
+                result["gcode_dir"] = GCODE_OUTPUT_DIR
+                result["saved_images"] = saved_images
+                result["images_dir"] = IMAGES_OUTPUT_DIR
                 result["success"] = True
                 self._send_json(result)
 
@@ -488,12 +827,32 @@ def main():
     print("===========================================================")
     print("⚡ FALCON G-CODE STUDIO v3 (APLICACIÓN NATIVA LINUX)")
     print("   Creality Falcon 5W • Mesa de Trabajo 400 × 400 mm")
-    print("   Iniciando interfaz de escritorio GTK 3.0...")
+    if HAS_GTK:
+        print("   Iniciando interfaz de escritorio GTK 3.0...")
+    else:
+        print("   Iniciando en navegador web (modo fallback)...")
     print("===========================================================")
     
     port, server = start_internal_server()
-    app = FalconNativeStudioApp(port)
-    app.run()
+    if HAS_GTK:
+        app = FalconNativeStudioApp(port)
+        app.run()
+    else:
+        import time
+        import webbrowser
+        url = f"http://127.0.0.1:{port}/index.html"
+        if GTK_IMPORT_ERROR:
+            print(f"\n💡 Ventana nativa GTK no disponible: {GTK_IMPORT_ERROR}")
+            print("   Para habilitar la ventana de escritorio GTK ejecuta:")
+            print("   sudo apt install python3-gi gir1.2-gtk-3.0 gir1.2-webkit2-4.1\n")
+        print(f"🌐 Abriendo aplicación en tu navegador web: {url}")
+        webbrowser.open(url)
+        try:
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            print("\nDeteniendo servidor...")
+            server.shutdown()
 
 if __name__ == "__main__":
     main()

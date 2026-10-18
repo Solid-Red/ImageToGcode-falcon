@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Falcon G-Code Studio v3 - Creality Falcon 5W (Linux Desktop)</title>
   <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Allerta+Stencil&family=Montserrat:wght@700;900&family=Pacifico&family=Staatliches&family=Bungee&display=swap" rel="stylesheet">
 </head>
 <body>
   <!-- HEADER PRINCIPAL NATIVO -->
@@ -27,6 +30,8 @@
       </div>
 
       <input type="file" id="gcodeFileInput" accept=".gcode,.nc,.gc,.txt,.tap" style="display:none">
+      <button id="btnOpenGcodeDir" class="btn-secondary btn-sm" data-i18n="btnOpenGcodeDir" data-i18n-title="btnOpenGcodeDirTitle" title="Open predefined G-Codes folder in file manager">📁 G-Codes</button>
+      <button id="btnOpenImagesDir" class="btn-secondary btn-sm" data-i18n="btnOpenImagesDir" data-i18n-title="btnOpenImagesDirTitle" title="Open predefined Images folder in file manager">🖼️ Images</button>
       <button id="btnImportGcodeTop" class="btn-accent btn-sm" data-i18n="btnImportGcodeTop" data-i18n-title="btnImportGcodeTopTitle" title="Import .gcode or .nc file to bed">📂 Import G-Code</button>
       <button id="btnGenerateGcodeTop" class="btn-primary btn-sm" data-i18n="btnGenerateGcodeTop" data-i18n-title="btnGenerateGcodeTopTitle" title="Generate G-Code with active images on bed">⚡ Generate G-Code</button>
       <button id="btnExportGcodeTop" class="btn-secondary btn-sm" data-i18n="btnExportGcodeTop" data-i18n-title="btnExportGcodeTopTitle" title="Save with native Linux dialog">💾 Export .gcode</button>
@@ -241,16 +246,34 @@
               </div>
             </div>
 
+            <div class="media-add-toolbar">
+              <button id="btnOpenTextModal" class="btn-accent" type="button" style="width: 100%;" data-i18n="btnOpenTextModal" title="Escribir letras o texto para cortar o grabar">
+                <span>🔤</span> <span data-i18n="btnOpenTextModalLabel">Escribir Letras / Texto</span>
+              </button>
+            </div>
+
             <!-- MENÚ DE MÚLTIPLES IMÁGENES EN LA MESA -->
             <div class="settings-box image-layers-box">
               <div class="box-header-row">
                 <h3><span data-i18n="imgLayersTitle">🖼️ Bed Images Menu</span> (<span id="imgCountBadge">0</span>)</h3>
                 <div class="layers-header-actions">
+                  <button id="btnAddTextQuick" class="btn-primary btn-xs" type="button" data-i18n="btnAddTextQuick" title="Escribir letras">🔤 Texto</button>
                   <button id="btnAddMoreImages" class="btn-secondary btn-xs" type="button" data-i18n="btnAddMoreImages" data-i18n-title="btnAddMoreImagesTitle" title="Add more images to bed">➕ Add</button>
                   <button id="btnClearAllImages" class="btn-danger btn-xs" type="button" data-i18n="btnClearAllImages" data-i18n-title="btnClearAllImagesTitle" title="Remove all images from bed" style="display:none;">🗑️ Clear</button>
                 </div>
               </div>
               <p class="section-hint" data-i18n="imgLayersHint">Check 🖨️ to include in engraving or uncheck to skip. Click to select and move.</p>
+
+              <!-- Barra de Selección Múltiple y Agrupación -->
+              <div id="groupMultiSelectBar" class="group-multiselect-bar" style="display: none;">
+                <div class="group-select-info">
+                  <span id="groupSelectCount">0</span> <span data-i18n="selectedCount">seleccionadas</span>
+                </div>
+                <div class="group-select-actions">
+                  <button id="btnGroupSelected" type="button" class="btn-primary btn-xs" data-i18n="btnGroup" title="Agrupar imágenes seleccionadas para mover y copiar juntas">🔗 Agrupar</button>
+                  <button id="btnClearSelection" type="button" class="btn-secondary btn-xs" data-i18n="btnClearSelection" title="Desmarcar todas">Desmarcar</button>
+                </div>
+              </div>
 
               <div id="imageListContainer" class="image-list-container">
                 <div class="empty-images-hint" id="emptyImagesHint" data-i18n="emptyImagesHint">
@@ -262,9 +285,59 @@
             <!-- Posición sobre la mesa de trabajo (de la imagen seleccionada) -->
             <div class="settings-box" id="selectedImagePropsBox">
               <div class="box-header-row">
-                <h3><span data-i18n="posImgBoxTitle">📍 Position:</span> <span id="selectedImageNameTag" style="color: var(--laser-cyan); font-weight: normal; font-size: 11px;">(None selected)</span></h3>
-                <span id="selectedImageBadge" class="layer-active-tag" style="display:none;" data-i18n="selectedImageBadge">Selected</span>
+                <h3><span data-i18n="posImgBoxTitle">📍 Position:</span> <span id="selectedImageNameTag" class="selected-img-name-tag">(None selected)</span></h3>
+                <div style="display: flex; gap: 4px; align-items: center;">
+                  <button id="btnEditTextLayer" class="btn-secondary btn-xs" type="button" style="display:none;" data-i18n="btnEditTextLayer" title="Editar texto de esta capa">✏️ Editar</button>
+                  <button id="btnOpenCropQuick" class="btn-secondary btn-xs" type="button" style="display:none;" data-i18n="btnOpenCropSidebar" title="Recortar imagen activa">✂️ Recortar</button>
+                  <span id="cropStatusBadge" class="badge-cropped" style="display:none;" data-i18n="badgeCropped">Recortada</span>
+                  <span id="selectedImageBadge" class="layer-active-tag" style="display:none;" data-i18n="selectedImageBadge">Selected</span>
+                </div>
               </div>
+
+              <!-- Barra de Grupo (si la imagen activa pertenece a un grupo) -->
+              <div class="group-management-bar" id="selectedImageGroupRow" style="display: none;">
+                <div class="group-badge-col">
+                  <span class="group-active-pill" id="valActiveGroupBadge">👥 Grupo 1</span>
+                  <span class="group-member-count" id="valActiveGroupCount">(2 imágenes)</span>
+                </div>
+                <div class="group-actions-col">
+                  <button type="button" class="btn-group-action btn-copy-grp" id="btnActiveDuplicateGroup" data-i18n="btnDuplicateGroup" data-i18n-title="duplicateGroupTitle" title="Duplicar todo el grupo para imprimir más en la mesa">📋 Duplicar Grupo</button>
+                  <button type="button" class="btn-group-action btn-ungroup" id="btnActiveUngroup" data-i18n="btnUngroup" data-i18n-title="ungroupTitle" title="Desagrupar imágenes">🔓 Desagrupar</button>
+                </div>
+              </div>
+
+              <!-- Barra de Duplicar Imagen Individual (si no pertenece a un grupo) -->
+              <div class="single-duplicate-bar" id="singleDuplicateRow" style="display: none;">
+                <button type="button" class="btn-single-duplicate" id="btnActiveDuplicateSingle" data-i18n="btnDuplicateImage" data-i18n-title="duplicateImageTitle" title="Duplicar esta imagen en la mesa">📋 Duplicar Imagen</button>
+              </div>
+
+              <!-- Orden de Impresión / Secuencia en G-Code -->
+              <div class="image-order-bar" id="selectedImageOrderRow" style="display: none;">
+                <div class="order-info-group">
+                  <span class="order-lbl" data-i18n="lblPrintOrder">Orden de Grabado:</span>
+                  <strong id="valActivePrintOrder" class="order-val">#1 de 1</strong>
+                </div>
+                <div class="order-btns-group">
+                  <button type="button" class="btn-order-step" id="btnActiveMoveFirst" data-i18n-title="btnMoveFirstTitle" title="Mover al principio (grabar 1º)">⏮️</button>
+                  <button type="button" class="btn-order-step" id="btnActiveMoveUp" data-i18n-title="moveLayerUpTitle" title="Subir orden (grabar antes)">▲</button>
+                  <button type="button" class="btn-order-step" id="btnActiveMoveDown" data-i18n-title="moveLayerDownTitle" title="Bajar orden (grabar después)">▼</button>
+                  <button type="button" class="btn-order-step" id="btnActiveMoveLast" data-i18n-title="btnMoveLastTitle" title="Mover al final (grabar último)">⏭️</button>
+                </div>
+              </div>
+
+              <!-- Estilo / Tipo de Corte de la imagen activa -->
+              <div class="quick-style-container" style="margin-top: 8px; margin-bottom: 8px;">
+                <div class="quick-style-header">
+                  <span style="font-size: 11px; font-weight: 600; color: var(--text-muted);" data-i18n="lblItemCutStyle">🎯 Estilo / Tipo de Corte para esta imagen:</span>
+                </div>
+                <div class="quick-style-btns" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin-top: 4px;">
+                  <button type="button" class="btn-quick-style btn-scale" data-style="cut" data-i18n="btnStyleCut" data-i18n-title="btnStyleCutTitle" title="Corte Perfilado (M3 S1000, 300 mm/min)">✂️ Corte</button>
+                  <button type="button" class="btn-quick-style btn-scale" data-style="score" data-i18n="btnStyleScore" data-i18n-title="btnStyleScoreTitle" title="Marcado / Grabado Vectorial (M4 S350, 1500 mm/min)">⚡ Marcado</button>
+                  <button type="button" class="btn-quick-style btn-scale" data-style="raster" data-i18n="btnStyleRaster" data-i18n-title="btnStyleRasterTitle" title="Grabado Barrido (Raster, 3500 mm/min)">🖨️ Barrido</button>
+                  <button type="button" class="btn-quick-style btn-scale" data-style="pen" data-i18n="btnStylePen" data-i18n-title="btnStylePenTitle" title="Trazado con Pluma (2500 mm/min)">🖊️ Pluma</button>
+                </div>
+              </div>
+
               <div class="form-row">
                 <div class="form-group">
                   <label for="posImgX" data-i18n="lblPosImgX">X Position (mm):</label>
@@ -305,8 +378,70 @@
               </div>
             </div>
 
-            <!-- Filtros de Imagen y Resolución -->
-            <div class="settings-box">
+            <!-- Recorte y Edición de Imagen -->
+            <div class="settings-box" id="cropSettingsBox">
+              <div class="box-header-row">
+                <h3 data-i18n="cropBoxTitle">✂️ Crop &amp; Edit Image</h3>
+                <span id="cropStatusBadgeBox" class="badge-cropped" style="display: none;" data-i18n="badgeCropped">Recortada</span>
+              </div>
+              <p class="section-hint" style="margin-bottom: 8px;" data-i18n="cropBoxHint">Recorta la imagen para generar G-Code únicamente de la parte deseada.</p>
+              <div style="display: flex; gap: 6px;">
+                <button type="button" class="btn-accent" id="btnOpenCropModal" style="flex: 2; height: 34px; font-weight: bold; font-size: 12px;" data-i18n="btnOpenCropModal">
+                  <span>✂️</span> <span data-i18n="btnCropImage">Recortar Imagen</span>
+                </button>
+                <button type="button" class="btn-secondary btn-sm" id="btnRestoreOriginalCrop" style="flex: 1; display: none; height: 34px; font-size: 11px;" data-i18n="btnRestoreCrop" title="Restaurar imagen completa original">
+                  ↺ Restaurar
+                </button>
+              </div>
+            </div>
+
+            <!-- Rotación y Orientación de la Imagen -->
+            <div class="settings-box" id="rotationSettingsBox">
+              <div class="box-header-row">
+                <h3 data-i18n="rotationBoxTitle">🔄 Rotation &amp; Orientation</h3>
+              </div>
+              <div class="scale-shortcuts" style="margin-top: 4px;">
+                <button type="button" class="btn-scale" id="btnRotateCCW" data-i18n-title="btnRotateCCWTitle" title="Rotar 90° Antihorario (-90°)">⟲ -90°</button>
+                <button type="button" class="btn-scale" id="btnRotateCW" data-i18n-title="btnRotateCWTitle" title="Rotar 90° Horario (+90°)">⟳ +90°</button>
+                <button type="button" class="btn-scale" id="btnRotate180" data-i18n-title="btnRotate180Title" title="Rotar 180°">🔄 180°</button>
+                <button type="button" class="btn-scale" id="btnFlipH" data-i18n-title="btnFlipHTitle" title="Voltear Horizontal (Espejo)">↔️ Flip H</button>
+                <button type="button" class="btn-scale" id="btnFlipV" data-i18n-title="btnFlipVTitle" title="Voltear Vertical">↕️ Flip V</button>
+              </div>
+              <div class="form-row" style="margin-top: 8px; align-items: flex-end;">
+                <div class="form-group" style="flex: 1;">
+                  <label for="customRotateAngle" data-i18n="lblCustomAngle">Custom Angle (°):</label>
+                  <input type="number" id="customRotateAngle" value="45" min="-360" max="360" step="5">
+                </div>
+                <button type="button" class="btn-scale" id="btnApplyCustomRotate" style="height: 32px; padding: 0 12px; font-weight: bold; background: var(--bg-card);" data-i18n="btnApplyRotate">⟳ Rotate</button>
+              </div>
+            </div>
+
+            <!-- SELECTOR MANUAL DE MODO: BARRIDO VS SEGUIMIENTO -->
+            <div class="settings-box mode-selection-box">
+              <div class="box-header-row">
+                <h3 data-i18n="pathModeTitle">🎯 CNC Trajectory Mode</h3>
+                <span id="activeModeBadge" class="machine-tag" data-i18n="badgeBarrido">Barrido</span>
+              </div>
+              <div class="path-mode-toggle-group">
+                <button type="button" id="btnModeBarrido" class="path-mode-btn active" data-i18n-title="modeBarridoTitle" title="Línea por línea (Grabado de fotos y madera)">
+                  <span class="mode-icon">🖨️</span>
+                  <div class="mode-text">
+                    <strong data-i18n="modeBarridoTitle">Barrido (Raster)</strong>
+                    <span data-i18n="modeBarridoSub">Línea por línea</span>
+                  </div>
+                </button>
+                <button type="button" id="btnModeSeguimiento" class="path-mode-btn" data-i18n-title="modeSeguimientoTitle" title="Curvas continuas y vectores (Pluma, Plotter, Siluetas y Corte)">
+                  <span class="mode-icon">✒️</span>
+                  <div class="mode-text">
+                    <strong data-i18n="modeSeguimientoTitle">Seguimiento (Curvas)</strong>
+                    <span data-i18n="modeSeguimientoSub">Trazado continuo</span>
+                  </div>
+                </button>
+              </div>
+            </div>
+
+            <!-- MODO BARRIDO: Filtros de Imagen y Resolución -->
+            <div class="settings-box" id="rasterSettingsBox">
               <h3 data-i18n="qualityBoxTitle">⚙️ Conversion &amp; Engraving Quality</h3>
               <div class="form-row">
                 <div class="form-group">
@@ -346,6 +481,130 @@
                   <span data-i18n="chkInvertLabel">Invert Colors (Negative - for dark materials/metal)</span>
                 </label>
               </div>
+            </div>
+
+            <!-- MODO SEGUIMIENTO: Ajustes de Curvas, Pluma / Plotter y Eje Z -->
+            <div class="settings-box vector-vertical-box" id="vectorSettingsBox" style="display: none;">
+              <h3 data-i18n="vectorSettingsTitle">✒️ Curve &amp; Pen / Plotter Settings</h3>
+              
+              <!-- 1. Objetivo de Operación: Corte vs Dibujo/Pluma -->
+              <div class="form-group full-width">
+                <label for="vectorOpSelect" data-i18n="lblVectorOp">Target Operation:</label>
+                <select id="vectorOpSelect">
+                  <option value="cut" selected data-i18n="optVectorOpCut">✂️ Laser Deep Cut (Slow: 150 - 500 mm/min)</option>
+                  <option value="pen" data-i18n="optVectorOpPen">✒️ Pen Plotter / Drawing (Fast: 1500 - 3000 mm/min)</option>
+                  <option value="score" data-i18n="optVectorOpScore">⚡ Laser Score / Marking (Medium: 1500 - 3500 mm/min)</option>
+                </select>
+              </div>
+
+              <!-- Potencia y Modo Láser para Vector / Corte -->
+              <div class="form-row" id="vectorLaserPowerRow">
+                <div class="form-group">
+                  <label for="vectorLaserPowerInput" data-i18n="lblVectorLaserPower">Potencia Láser S (0-1000):</label>
+                  <input type="number" id="vectorLaserPowerInput" value="1000" min="0" max="1000" step="10">
+                </div>
+                <div class="form-group">
+                  <label for="vectorLaserModeSelect" data-i18n="lblVectorLaserMode">Modo Láser:</label>
+                  <select id="vectorLaserModeSelect">
+                    <option value="M3" selected>M3 (Corte continuo)</option>
+                    <option value="M4">M4 (Dinámico)</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- 2. Pasadas de Corte -->
+              <div class="form-group full-width">
+                <label for="vectorPassesSelect" data-i18n="lblVectorPasses">Cut Passes:</label>
+                <select id="vectorPassesSelect">
+                  <option value="1" selected>1 Pass</option>
+                  <option value="2">2 Passes (Cleaner cut)</option>
+                  <option value="3">3 Passes (Deep / Plywood)</option>
+                  <option value="4">4 Passes (Thick wood)</option>
+                </select>
+              </div>
+
+              <!-- 3. Método de Seguimiento de Curvas -->
+              <div class="form-group full-width">
+                <label for="vectorTypeSelect" data-i18n="lblVectorType">Path Tracking Method:</label>
+                <select id="vectorTypeSelect">
+                  <option value="contour_outer" selected data-i18n="optVectorContourOuter">✂️ Outer Silhouette (Single cut pass per piece)</option>
+                  <option value="contour" data-i18n="optVectorContour">📐 Outlines &amp; Inner Holes (Single pass per curve)</option>
+                  <option value="centerline" data-i18n="optVectorCenterline">✒️ Centerline (Single-stroke pen sketches)</option>
+                </select>
+              </div>
+
+              <!-- 4. Herramienta / Actuador -->
+              <div class="form-group full-width">
+                <label for="toolTypeSelect" data-i18n="lblToolType">Pen / Tool Actuation:</label>
+                <select id="toolTypeSelect">
+                  <option value="laser" selected data-i18n="optToolLaser">Laser / Servo (PWM M3/M5)</option>
+                  <option value="z_axis" data-i18n="optToolZ">Motorized Z Axis (G0 Z up / G1 Z down)</option>
+                </select>
+              </div>
+
+              <!-- 5. Velocidad de Corte / Dibujo -->
+              <div class="form-group full-width">
+                <label for="speedDrawInput" id="lblSpeedDrawDynamic" data-i18n="lblSpeedCut">Cutting Speed (mm/min):</label>
+                <input type="number" id="speedDrawInput" value="300" min="50" max="10000" step="25">
+              </div>
+
+              <!-- 6. Atajos de Velocidad con 1 Clic -->
+              <div class="scale-shortcuts-block">
+                <span class="shortcuts-label" data-i18n="lblSpeedPresets">Speed:</span>
+                <div class="shortcuts-btns-grid">
+                  <button type="button" class="btn-scale btn-speed-preset" data-speed="180">180 (3mm)</button>
+                  <button type="button" class="btn-scale btn-speed-preset active" data-speed="300">300 (Std)</button>
+                  <button type="button" class="btn-scale btn-speed-preset" data-speed="500">500 (Light)</button>
+                  <button type="button" class="btn-scale btn-speed-preset" data-speed="1500">1500</button>
+                  <button type="button" class="btn-scale btn-speed-preset" data-speed="2500">2500</button>
+                </div>
+              </div>
+
+              <!-- 7. Suavizado de Curvas -->
+              <div class="form-group full-width">
+                <label for="curveTolSelect" data-i18n="lblCurveTolerance">Curve Smoothing:</label>
+                <select id="curveTolSelect">
+                  <option value="0.15" data-i18n="optTolFine">Fine (0.15 mm - Detailed)</option>
+                  <option value="0.35" selected data-i18n="optTolBalanced">Balanced (0.35 mm - Smooth)</option>
+                  <option value="0.70" data-i18n="optTolFast">Fast (0.70 mm - Fast draft)</option>
+                </select>
+              </div>
+
+              <!-- 8. Controles específicos de Eje Z (visibles cuando toolType == z_axis) -->
+              <div id="zAxisControls" class="z-axis-panel" style="display: none;">
+                <div class="form-group full-width">
+                  <label for="zUpInput" data-i18n="lblZUp">Z Up (Travel mm):</label>
+                  <input type="number" id="zUpInput" value="3.0" min="0.5" max="50" step="0.5">
+                </div>
+                <div class="form-group full-width">
+                  <label for="zDownInput" data-i18n="lblZDown">Z Down (Draw mm):</label>
+                  <input type="number" id="zDownInput" value="0.0" min="-10" max="10" step="0.1">
+                </div>
+                <div class="form-group full-width">
+                  <label for="zSpeedInput" data-i18n="lblZSpeed">Z Speed (mm/min):</label>
+                  <input type="number" id="zSpeedInput" value="1200" min="100" max="6000" step="100">
+                </div>
+              </div>
+
+              <!-- 9. Umbral de Detección de Líneas -->
+              <div class="slider-row" style="margin-top: 4px;">
+                <div class="slider-item full-width" style="grid-column: 1 / -1;">
+                  <div class="slider-lbl"><span data-i18n="lblThreshold">Line Detection Threshold:</span><span id="valThreshold">128</span></div>
+                  <input type="range" id="sliderThreshold" min="10" max="245" step="1" value="128">
+                </div>
+              </div>
+
+              <!-- 10. Invertir Colores -->
+              <div class="checkbox-line">
+                <label class="custom-checkbox">
+                  <input type="checkbox" id="chkInvertVector">
+                  <span data-i18n="chkInvertLabel">Invert Colors (Negative - for dark materials/metal)</span>
+                </label>
+              </div>
+
+              <p class="section-hint" style="margin-top: 6px; margin-bottom: 2px;" data-i18n="hintSeguimiento">
+                💡 <strong>Curve Tracking:</strong> The CNC pen/laser glides smoothly along shapes and lines without scanning row by row. Rapid air moves are optimized.
+              </p>
             </div>
 
             <!-- Calibración y Auto-Home ($H) -->
@@ -396,6 +655,10 @@
 
         <!-- PESTAÑA 2: POTENCIA Y PERFILES DE MATERIALES CREALITY FALCON -->
         <div id="tabLaserSettings" class="side-pane">
+          <div class="selected-target-hint" style="background: rgba(0, 229, 255, 0.08); border: 1px solid rgba(0, 229, 255, 0.25); border-radius: 6px; padding: 7px 10px; margin-bottom: 12px; font-size: 11px; display: flex; align-items: center; justify-content: space-between;">
+            <span>🎯 <span data-i18n="lblConfiguringImage">Configurando:</span> <strong id="tab2SelectedImageName" style="color: var(--laser-cyan);">(Ninguna seleccionada)</strong></span>
+            <span id="tab2SelectedStyleBadge" class="layer-style-pill cut" style="margin: 0;">✂️ CORTE</span>
+          </div>
           <div class="settings-box">
             <div class="box-header-row">
               <h3 data-i18n="machineWattTitle">⚡ Machine Optical Power</h3>
@@ -477,6 +740,200 @@
     </aside>
 
   </main>
+
+  <!-- MODAL DE GENERACIÓN & EDICIÓN DE TEXTO / LETRAS -->
+  <div id="textModalOverlay" class="modal-overlay" style="display: none;">
+    <div class="modal-content text-modal">
+      <div class="modal-header">
+        <h3 id="modalTextTitle" data-i18n="modalTextTitle">🔤 Generador de Texto &amp; Letras para Corte</h3>
+        <button id="btnCloseTextModal" class="btn-icon">✕</button>
+      </div>
+      <div class="modal-body text-modal-body">
+        <div class="text-modal-grid">
+          <!-- Columna izquierda: Opciones de texto -->
+          <div class="text-controls-col">
+            <div class="form-group">
+              <label for="txtInputContent" data-i18n="lblTextContent">Texto a cortar o grabar:</label>
+              <textarea id="txtInputContent" rows="2" class="text-input-field" placeholder="Escribe letras o palabras aquí...">FALCON</textarea>
+            </div>
+
+            <div class="form-group">
+              <label for="txtFontFamily" data-i18n="lblFontFamily">Tipografía / Fuente:</label>
+              <select id="txtFontFamily" class="font-select">
+                <option value="'Allerta Stencil', sans-serif" selected>✂️ Allerta Stencil (Especial Corte Láser)</option>
+                <option value="Impact, sans-serif">🔲 Impact (Gruesa / Muy Resistente)</option>
+                <option value="'Montserrat', sans-serif">📐 Montserrat Black (Moderna / Bloque)</option>
+                <option value="'Staatliches', sans-serif">🏛️ Staatliches (Cartel / Alta)</option>
+                <option value="'Bungee', cursive">🎪 Bungee (Letras Gruesas 3D)</option>
+                <option value="'Pacifico', cursive">🖋️ Pacifico (Cursiva / Manuscrita)</option>
+                <option value="Arial, sans-serif">🔤 Arial (Estándar Limpia)</option>
+                <option value="Georgia, serif">📜 Georgia (Clásica con Remates)</option>
+                <option value="'Courier New', monospace">⌨️ Courier New (Monoespaciada / Industrial)</option>
+              </select>
+            </div>
+
+            <div class="text-style-row">
+              <button type="button" class="btn-toggle active" id="btnTextBold" title="Negrita (Bold)"><strong>B</strong> Negrita</button>
+              <button type="button" class="btn-toggle" id="btnTextItalic" title="Cursiva (Italic)"><em>I</em> Cursiva</button>
+              <button type="button" class="btn-toggle" id="btnTextUppercase" title="Mayúsculas">aA MAYÚSCULAS</button>
+            </div>
+
+            <div class="form-group">
+              <label for="txtModeSelect" data-i18n="lblTextMode">Modo de Trazo:</label>
+              <select id="txtModeSelect">
+                <option value="solid" selected data-i18n="optTextSolid">⬛ Relleno Sólido (Corte Exterior / Silueta)</option>
+                <option value="outline" data-i18n="optTextOutline">⬜ Contorno Hueco (Trazo de Líneas / Letras con Borde)</option>
+              </select>
+            </div>
+
+            <div class="form-group" id="groupStrokeWidth" style="display: none;">
+              <div class="slider-lbl">
+                <span data-i18n="lblStrokeWidth">Grosor de Contorno:</span>
+                <span id="valStrokeWidth">4 px</span>
+              </div>
+              <input type="range" id="sliderStrokeWidth" min="1" max="15" value="4" step="1">
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="txtTargetHeight" data-i18n="lblTargetHeight">Altura en Mesa (mm):</label>
+                <input type="number" id="txtTargetHeight" value="35" min="5" max="380" step="1">
+              </div>
+              <div class="form-group">
+                <label for="txtLetterSpacing" data-i18n="lblLetterSpacing">Espaciado (px):</label>
+                <input type="number" id="txtLetterSpacing" value="0" min="-10" max="60" step="1">
+              </div>
+            </div>
+          </div>
+
+          <!-- Columna derecha: Vista previa en vivo -->
+          <div class="text-preview-col">
+            <label class="preview-label" data-i18n="lblLivePreview">Vista Previa Nítida:</label>
+            <div class="text-preview-canvas-wrap">
+              <canvas id="textPreviewCanvas"></canvas>
+            </div>
+            <div class="text-metrics-pill">
+              <span id="textMetricsEstimate">Medidas: ~100 × 35 mm</span>
+            </div>
+            <div class="text-cutting-tip" data-i18n="textCuttingTip">
+              💡 <strong>Consejo para Corte:</strong> Al cortar en madera o acrílico, la fuente <em>Allerta Stencil</em> o <em>Impact</em> evita que los centros de letras como A, B, D, O, P, R o números como 0, 4, 6, 8, 9 se caigan al cortar.
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer-actions">
+          <button type="button" class="btn-secondary" id="btnCancelTextModal" data-i18n="btnCancel">Cancelar</button>
+          <button type="button" class="btn-accent btn-lg" id="btnApplyInsertText">
+            <span id="lblBtnInsertText">➕ Insertar en la Mesa</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL DE RECORTE DE IMAGEN INTERACTIVO (CROP TOOL) -->
+  <div id="cropModalOverlay" class="modal-overlay" style="display: none;">
+    <div class="modal-content crop-modal">
+      <div class="modal-header">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="font-size: 18px;">✂️</span>
+          <h3 id="modalCropTitle" data-i18n="modalCropTitle">Recortar Imagen para G-Code</h3>
+          <span id="cropImageNameTag" class="selected-img-name-tag" style="margin-left: 6px;"></span>
+        </div>
+        <button id="btnCloseCropModal" class="btn-icon">✕</button>
+      </div>
+
+      <div class="modal-body crop-modal-body">
+        <!-- Toolbar con proporciones, centrado y zoom -->
+        <div class="crop-toolbar">
+          <div class="crop-toolbar-group">
+            <span class="crop-toolbar-lbl" data-i18n="lblCropRatio">Proporción:</span>
+            <button type="button" class="btn-scale crop-ratio-btn active" data-ratio="free" data-i18n="btnRatioFree">Libre</button>
+            <button type="button" class="btn-scale crop-ratio-btn" data-ratio="1:1">1:1</button>
+            <button type="button" class="btn-scale crop-ratio-btn" data-ratio="4:3">4:3</button>
+            <button type="button" class="btn-scale crop-ratio-btn" data-ratio="16:9">16:9</button>
+            <button type="button" class="btn-scale crop-ratio-btn" data-ratio="original" data-i18n="btnRatioOriginal">Original</button>
+          </div>
+
+          <div class="crop-toolbar-divider"></div>
+
+          <div class="crop-toolbar-group">
+            <button type="button" class="btn-scale" id="btnCropSelectAll" data-i18n="btnCropSelectAll" title="Seleccionar toda la imagen">⬛ Toda</button>
+            <button type="button" class="btn-scale" id="btnCropCenter" data-i18n="btnCropCenter" title="Centrar selección">⌖ Centrar</button>
+            <button type="button" class="btn-scale" id="btnCropZoomOut" title="Reducir zoom">➖</button>
+            <button type="button" class="btn-scale" id="btnCropZoomIn" title="Aumentar zoom">➕</button>
+            <button type="button" class="btn-scale" id="btnCropFit" title="Ajustar vista">⌕ 100%</button>
+          </div>
+        </div>
+
+        <!-- Área de trabajo de recorte -->
+        <div class="crop-workspace-grid">
+          <!-- Canvas interactivo de recorte -->
+          <div class="crop-canvas-viewport" id="cropCanvasViewport">
+            <canvas id="cropCanvas"></canvas>
+            <div class="crop-help-tip" data-i18n="cropHelpTip">
+              🖱️ Arrastra sobre la imagen para seleccionar el área. Mueve los bordes o esquinas para ajustar.
+            </div>
+          </div>
+
+          <!-- Panel lateral: Métricas, Dimensiones en la Mesa y Previsualización -->
+          <div class="crop-sidebar-col">
+            <div class="crop-info-card">
+              <h4 data-i18n="cropMetricsTitle">📐 Dimensiones del Recorte</h4>
+              <div class="crop-metrics-list">
+                <div class="crop-metric-row">
+                  <span data-i18n="cropLblOriginalPx">Original:</span>
+                  <strong id="cropValOriginalPx">0 × 0 px</strong>
+                </div>
+                <div class="crop-metric-row">
+                  <span data-i18n="cropLblCroppedPx">Recorte (px):</span>
+                  <strong id="cropValCroppedPx" style="color: var(--laser-cyan);">0 × 0 px</strong>
+                </div>
+                <div class="crop-metric-row">
+                  <span data-i18n="cropLblBedMm">En la Mesa:</span>
+                  <strong id="cropValBedMm" style="color: #00e676;">0.0 × 0.0 mm</strong>
+                </div>
+                <div class="crop-metric-row">
+                  <span data-i18n="cropLblPercent">Área seleccionada:</span>
+                  <strong id="cropValPercent">100%</strong>
+                </div>
+              </div>
+            </div>
+
+            <!-- Vista previa recortada -->
+            <div class="crop-preview-card">
+              <div class="crop-preview-header">
+                <span data-i18n="cropLblPreview">Vista Previa Recortada:</span>
+              </div>
+              <div class="crop-preview-box">
+                <canvas id="cropMiniPreviewCanvas"></canvas>
+              </div>
+            </div>
+
+            <div class="crop-guidance-card">
+              <div class="crop-guide-item">
+                <span>⚡</span>
+                <p data-i18n="cropGuideGcode">El G-Code se generará <strong>únicamente</strong> con la parte seleccionada, optimizando tiempo de corte y grabado.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Botones de pie de modal -->
+        <div class="modal-footer-actions crop-footer-actions">
+          <button type="button" class="btn-secondary" id="btnRestoreOriginalCropModal" style="display: none; margin-right: auto;" data-i18n="btnRestoreOriginal">
+            ↺ Restaurar Original
+          </button>
+          <button type="button" class="btn-secondary" id="btnCancelCropModal" data-i18n="btnCancel">
+            Cancelar
+          </button>
+          <button type="button" class="btn-primary btn-lg" id="btnApplyCrop" style="background: linear-gradient(135deg, #00c853, #00e676); border-color: #00e676;">
+            <span style="font-size: 16px;">✂️</span> <strong data-i18n="btnApplyCropText">Aplicar Recorte</strong>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <!-- MODAL DE VISUALIZACIÓN / INSPECCIÓN DE G-CODE -->
   <div id="gcodeModalOverlay" class="modal-overlay" style="display: none;">
